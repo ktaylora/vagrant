@@ -1,31 +1,40 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
-disk1 = './usr_src.vdi'
-disk2 = './usr_obj.vdi'
+usr_src_disk = './usr_src.vdi'
+usr_obj_disk = './usr_obj.vdi'
+if config.user.has?(:ARTIFACTS_KERNCONF)
+  build_opts = 'KERNCONF='+ENV['ARTIFACTS_KERNCONF']
+else
+  build_opts = ''
+if config.user.has?(:ARTIFACTS_BSD_VERSION)
+  bsd_version = ENV['ARTIFACTS_BSD_VERSION']
+else
+  bsd_version = 14.0
 Vagrant.configure("2") do |config|
   config.vm.guest = :freebsd
-  config.vm.synced_folder ".", "/vagrant", id:"vagrant-root", disabled: true
-  config.vm.box = "freebsd/FreeBSD-14.0-RELEASE"
-  config.vm.box_version = "2023.11.10"
+  if config.user.has?(:ARTIFACTS_KERNCONF)
+    config.vm.provision "file", source: ENV['ARTIFACTS_KERNCONF'], destination: '/tmp'+ENV['ARTIFACTS_KERNCONF']
+  config.vm.box = 'freebsd/FreeBSD-'+bsd_version+'-RELEASE'
+  #config.vm.box_version = "2023.11.10"
   config.ssh.shell = "sh"
   config.vm.base_mac = "080027D14C66"
   config.vm.provider "virtualbox" do |v|
-    unless File.exist?(disk1)
-      v.customize ['createhd', '--filename', disk1, '--variant', 'Fixed', '--size', 5 * 1024]
+    unless File.exist?(usr_src_disk)
+      v.customize ['createhd', '--filename', usr_src_disk, '--variant', 'Fixed', '--size', 5 * 1024]
     end
-    unless File.exist?(disk2)
-      v.customize ['createhd', '--filename', disk2, '--variant', 'Fixed', '--size', 5 * 1024]
+    unless File.exist?(usr_obj_disk)
+      v.customize ['createhd', '--filename', usr_obj_disk, '--variant', 'Fixed', '--size', 20 * 1024]
     end
-    v.memory= "4096"
-    v.customize ['storageattach', :id,  '--storagectl', 'IDE Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', disk1]
-    v.customize ['storageattach', :id,  '--storagectl', 'IDE Controller', '--port', 1, '--device', 1, '--type', 'hdd', '--medium', disk2]
+    v.memory= "2048"
+    v.customize ['storageattach', :id,  '--storagectl', 'IDE Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', usr_src_disk]
+    v.customize ['storageattach', :id,  '--storagectl', 'IDE Controller', '--port', 1, '--device', 1, '--type', 'hdd', '--medium', usr_obj_disk]
     v.cpus="4"
   end
   config.vm.provision "shell", inline: "newfs /dev/ada1 && mkdir -p /usr/src && mount /dev/ada1 /usr/src"
   config.vm.provision "shell", inline: "newfs /dev/ada2 && mkdir -p /usr/obj && mount /dev/ada2 /usr/obj"
-  config.vm.provision "shell", inline: "echo '/dev/ada1 /usr/src ufs rw 1 1' >> /etc/fstab"
-  config.vm.provision "shell", inline: "echo '/dev/ada2 /usr/obj ufs rw 1 1' >> /etc/fstab"
-  config.vm.provision "shell", inline: "pkg install -y htop git-lite"
-  config.vm.provision "shell", inline: "cd /usr/src && git clone -b main --depth=1 https://git.freebsd.org/src.git /usr/src/current"
-  config.vm.provision "shell", inline: "cd /usr/src/current && make -j4 buildworld && make -j4 buildkernel && make installkernel && shutdown -r now"
+  config.vm.provision "shell", inline: "pkg install -y git-lite"
+  config.vm.provision "shell", inline: "git clone -b main --depth=1 https://git.freebsd.org/src.git /usr/src/current"
+  config.vm.provision "shell", inline: "cd /usr/src/current && make -j4 buildworld "+build_opts+" && make -j4 buildkernel "+build_opts+" && make installkernel"+build_opts``
+  # mostly interested in our build artifacts -- not calling mergemaster to edit configs or install world / pkg upgrade for an actual system upgrade
+  config.vm.provision "shell", inline: "shutdown -r now"  
 end
