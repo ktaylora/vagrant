@@ -2,18 +2,17 @@
 # vi: set ft=ruby :
 usr_src_disk = './usr_src.vdi'
 usr_obj_disk = './usr_obj.vdi'
-if config.user.has?(:ARTIFACTS_KERNCONF)
-  build_opts = 'KERNCONF='+ENV['ARTIFACTS_KERNCONF']
-else
-  build_opts = ''
-if config.user.has?(:ARTIFACTS_BSD_VERSION)
-  bsd_version = ENV['ARTIFACTS_BSD_VERSION']
-else
-  bsd_version = 14.0
 Vagrant.configure("2") do |config|
+  kernconf_file = ENV['ARTIFACTS_KERNCONF']
+  kernconf = ENV['ARTIFACTS_KERNCONF']
+  kernconf = kernconf || 'GENERIC'
+  build_opts = "KERNCONF=" + kernconf
+  bsd_version = ENV['ARTIFACTS_BSD_VERSION'] 
+  bsd_version = bsd_version || '14.0'
   config.vm.guest = :freebsd
-  if config.user.has?(:ARTIFACTS_KERNCONF)
-    config.vm.provision "file", source: ENV['ARTIFACTS_KERNCONF'], destination: '/tmp'+ENV['ARTIFACTS_KERNCONF']
+  if kernconf_file and File.exist?(kernconf_file)
+    config.vm.provision "file", source: kernconf_file, destination: '/tmp/'+kernconf
+  end
   config.vm.box = 'freebsd/FreeBSD-'+bsd_version+'-RELEASE'
   #config.vm.box_version = "2023.11.10"
   config.ssh.shell = "sh"
@@ -34,7 +33,10 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: "newfs /dev/ada2 && mkdir -p /usr/obj && mount /dev/ada2 /usr/obj"
   config.vm.provision "shell", inline: "pkg install -y git-lite"
   config.vm.provision "shell", inline: "git clone -b main --depth=1 https://git.freebsd.org/src.git /usr/src/current"
-  config.vm.provision "shell", inline: "cd /usr/src/current && make -j4 buildworld "+build_opts+" && make -j4 buildkernel "+build_opts+" && make installkernel"+build_opts``
+  if kernconf_file and File.exist?(kernconf_file)
+    config.vm.provision "shell", inline: "cp /tmp/" + ENV['ARTIFACTS_KERNCONF'] + " /usr/src/current/sys/amd64/conf/" + ENV['ARTIFACTS_KERNCONF']
+  end
+  config.vm.provision "shell", inline: "cd /usr/src/current && make -j4 buildworld "+build_opts+" && make -j4 buildkernel "+build_opts+" && make installkernel"+build_opts
   # mostly interested in our build artifacts -- not calling mergemaster to edit configs or install world / pkg upgrade for an actual system upgrade
   config.vm.provision "shell", inline: "shutdown -r now"  
 end
